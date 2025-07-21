@@ -1,0 +1,51 @@
+@startuml
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+package "Camunda Platform" {
+  component CamundaEngine as Camunda
+}
+
+package "Process Adapter" {
+  component ProcessAdapter as Adapter
+}
+
+package "Kafka" {
+  component KafkaStartProcess
+  component KafkaTaskCompleted
+  component KafkaUserTask
+}
+
+package "Falcon (Mikroserwisy)" {
+  component ProcessModule
+  component DomainMicroservice
+  component FalconTaskModule
+}
+
+' Start procesu
+ProcessModule --> KafkaStartProcess : publish start process
+KafkaStartProcess --> Adapter : consume message
+
+' Utworzenie instancji w Camunda
+Adapter --> Camunda : start process instance
+
+' Service Task
+Camunda --> Adapter : external task (e.g. "validate")
+Adapter --> DomainMicroservice : REST/gRPC call
+DomainMicroservice --> Adapter : response
+Adapter --> Camunda : complete task
+
+' User Task
+Camunda --> Adapter : user task available (polling)
+Adapter --> KafkaUserTask : publish task info
+KafkaUserTask --> FalconTaskModule : consume task
+FalconTaskModule --> KafkaTaskCompleted : publish completion
+KafkaTaskCompleted --> Adapter : consume message
+Adapter --> Camunda : complete user task
+
+' Zakończenie procesu
+Camunda --> Adapter : end event (execution listener)
+Adapter --> KafkaTaskCompleted : publish process completed
+KafkaTaskCompleted --> ProcessModule : consume message
+
+@enduml
